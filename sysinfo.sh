@@ -94,7 +94,7 @@ echo
 # 追加詳細情報：lshw
 if command -v lshw >/dev/null 2>&1; then
   echo "【ハードウェア詳細情報（lshw）】"
-  sudo lshw -short
+  lshw -short
 else
   echo "【ハードウェア詳細情報】（lshw未使用）"
   echo "全体のハードウェア構成を知るには lshw パッケージのインストールを推奨します"
