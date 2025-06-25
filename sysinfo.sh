@@ -154,7 +154,7 @@ get_gui_info() {
   if command -v wmctrl >/dev/null 2>&1; then
     wmctrl -l
   else
-    echo "wmctrl が利用できません（apt install wmctrl 推奨）"
+    echo "wmctrl が利用できません（インストールを推奨）"
   fi
 
   print_item "ディスプレイ情報（xrandr）"
@@ -179,8 +179,18 @@ print_footer() {
   echo " - inxi        （統合システム情報）"
   echo " - xrandr      （ディスプレイ構成）"
   echo
-  echo "推奨パッケージ導入例 (Debian系):"
+
+  echo "推奨パッケージ導入例:"
+  echo "■ Debian系 Linux:"
   echo "  sudo apt install pciutils util-linux lshw inxi wmctrl x11-utils"
+  echo
+  echo "■ FreeBSD:"
+  echo "  sudo pkg install pciutils lshw inxi wmctrl xrandr xdpyinfo"
+  echo
+  echo "■ macOS (Homebrew):"
+  echo "  brew install pciutils lshw inxi wmctrl xrandr xdpyinfo"
+  echo
+  echo "※ macOS では一部コマンドは制限される場合があります"
   echo
   echo "===== 終了 ====="
 }
