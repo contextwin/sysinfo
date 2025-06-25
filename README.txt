@@ -10,10 +10,11 @@ git clone https://github.com/contextwin/sysinfo
 chomod +x sysinfo.sh
 ./sysinfo
 
-Usage: ./sysinfo.sh [--json|--html]
-  --json    JSON形式で出力します
-  --html    HTML形式で出力します
-  何も指定しない場合はテキスト形式で出力します
+使用法: ./sysinfo.sh [--text|--json|--html]
+  --text   テキスト出力（デフォルト）
+  --json   JSON 出力
+  --html   HTML テーブル出力
+何も指定しない場合はテキスト形式で出力します
 
 #root権限が必要なコマンドについて
 BIOS/ファームウェアに関する情報が欲しい場合は以下のコマンドを実行して下さい
