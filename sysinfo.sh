@@ -111,17 +111,59 @@ else
 fi
 echo
 
-echo "===== 補足：より詳細な情報を得るには ====="
-echo "以下のコマンドを使えば、より詳細なハードウェア情報が得られます："
-echo
-echo " - lscpu       （CPU詳細）"
-echo " - lshw        （全体のハードウェア構成）"
-echo " - inxi        （統合システム情報）"
-echo
-echo "これらを安全に導入するには："
-echo "  sudo apt update"
-echo "  sudo apt install pciutils util-linux lshw inxi"
-echo
-echo "※すべて公式のAPT経由であり、安全性・信頼性が高い方法です。"
-echo
-echo "===== 終了 ====="
+# 追加：GUI関連情報（Linux向け）
+get_gui_info_linux() {
+  echo "【GUI関連情報】"
+
+  echo "デスクトップ環境・セッション情報:"
+  echo "XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-不明}"
+  echo "DESKTOP_SESSION=${DESKTOP_SESSION:-不明}"
+  echo "XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-不明}"
+
+  echo
+  echo "ウィンドウマネージャー候補プロセス検出:"
+  # 代表的なWM・DEプロセス名を検索
+  wm_procs="gnome-shell kwin xfwm4 openbox i3 sway mutter kwin_x11"
+  found_wms=""
+  for proc in $wm_procs; do
+    if ps -e | grep -w "$proc" >/dev/null 2>&1; then
+      found_wms="$found_wms $proc"
+    fi
+  done
+  if [ -n "$found_wms" ]; then
+    echo "検出されたウィンドウマネージャー・デスクトップ環境プロセス:$found_wms"
+  else
+    echo "ウィンドウマネージャー・デスクトップ環境プロセスは検出できませんでした"
+  fi
+
+  echo
+  echo "ウィンドウ情報 (wmctrl -l):"
+  if command -v wmctrl >/dev/null 2>&1; then
+    wmctrl -l
+  else
+    echo "wmctrlコマンドがありません。インストールすると詳細なウィンドウ情報が得られます。"
+  fi
+
+  echo
+  echo "画面解像度・ディスプレイ情報 (xrandr --query):"
+  if command -v xrandr >/dev/null 2>&1; then
+    xrandr --query
+  else
+    echo "xrandrコマンドがありません。ディスプレイ情報が取得できません。"
+  fi
+
+  echo
+  echo "画面寸法 (xdpyinfo):"
+  if command -v xdpyinfo >/dev/null 2>&1; then
+    xdpyinfo | grep dimensions
+  else
+    echo "xdpyinfoコマンドがありません。画面寸法情報が取得できません。"
+  fi
+  echo
+}
+
+# Linuxの場合はGUI情報収集を実行
+if [ "$(uname)" = "Linux" ]; then
+  get_gui_info_linux
+fi
+
