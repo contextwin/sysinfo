@@ -195,6 +195,7 @@ get_gui_info() {
 get_gui_info
 
 echo "===== 終了 ====="
+echo "#root権限が必要なコマンドについて"
 echo 更にハードウェアの詳細な情報が欲しい場合は以下のコマンドを実行して下さい
 echo "command -v lshw >/dev/null && sudo lshw"
 echo 更にBIOS/ファームウェアに関する情報が欲しい場合は以下のコマンドを実行して下さい
