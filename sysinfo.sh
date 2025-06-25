@@ -119,10 +119,16 @@ get_gui_info_linux() {
   echo "XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-不明}"
   echo "DESKTOP_SESSION=${DESKTOP_SESSION:-不明}"
   echo "XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-不明}"
-
+  echo "GDMSESSION=${GDMSESSION:-不明}"
+  echo "XDG_SESSION_DESKTOP=${XDG_SESSION_DESKTOP:-不明}"
   echo
+
+  # Wayland or X11判別
+  session_type="${XDG_SESSION_TYPE:-unknown}"
+  echo "セッションタイプ判別: $session_type"
+  echo
+
   echo "ウィンドウマネージャー候補プロセス検出:"
-  # 代表的なWM・DEプロセス名を検索
   wm_procs="gnome-shell kwin xfwm4 openbox i3 sway mutter kwin_x11"
   found_wms=""
   for proc in $wm_procs; do
@@ -135,29 +141,104 @@ get_gui_info_linux() {
   else
     echo "ウィンドウマネージャー・デスクトップ環境プロセスは検出できませんでした"
   fi
-
   echo
-  echo "ウィンドウ情報 (wmctrl -l):"
-  if command -v wmctrl >/dev/null 2>&1; then
-    wmctrl -l
+
+  if [ "$session_type" = "x11" ]; then
+    echo "X11関連情報取得中..."
+
+    echo
+    echo "ウィンドウリスト (wmctrl -l):"
+    if command -v wmctrl >/dev/null 2>&1; then
+      wmctrl -l
+    else
+      echo "wmctrlコマンドがありません。インストールすると詳細なウィンドウ情報が得られます。"
+    fi
+
+    echo
+    echo "最前面ウィンドウの詳細情報 (xprop -root _NET_ACTIVE_WINDOW):"
+    if command -v xprop >/dev/null 2>&1; then
+      active_win_id=$(xprop -root _NET_ACTIVE_WINDOW | awk -F ' ' '{print $5}')
+      if [ "$active_win_id" != "0x0" ]; then
+        xprop -id "$active_win_id"
+      else
+        echo "アクティブなウィンドウが検出できません"
+      fi
+    else
+      echo "xpropコマンドがありません。インストールを推奨します。"
+    fi
+
+    echo
+    echo "ウィンドウ寸法・位置 (xwininfo -root):"
+    if command -v xwininfo >/dev/null 2>&1; then
+      xwininfo -root
+    else
+      echo "xwininfoコマンドがありません。インストールを推奨します。"
+    fi
+
+    echo
+    echo "画面解像度・ディスプレイ情報 (xrandr --query):"
+    if command -v xrandr >/dev/null 2>&1; then
+      xrandr --query
+    else
+      echo "xrandrコマンドがありません。ディスプレイ情報が取得できません。"
+    fi
+
+    echo
+    echo "画面寸法 (xdpyinfo):"
+    if command -v xdpyinfo >/dev/null 2>&1; then
+      xdpyinfo | grep dimensions
+    else
+      echo "xdpyinfoコマンドがありません。画面寸法情報が取得できません。"
+    fi
+
+  elif [ "$session_type" = "wayland" ]; then
+    echo "Wayland関連情報取得中..."
+
+    echo
+    echo "WAYLAND_DISPLAY環境変数: ${WAYLAND_DISPLAY:-不明}"
+
+    echo
+    if command -v weston-info >/dev/null 2>&1; then
+      echo "weston-infoコマンドの出力:"
+      weston-info
+    else
+      echo "weston-infoコマンドがありません。Waylandの詳細情報取得に便利です。"
+    fi
+
+    echo
+    if command -v wayland-info >/dev/null 2>&1; then
+      echo "wayland-infoコマンドの出力:"
+      wayland-info
+    else
+      echo "wayland-infoコマンドがありません。Waylandの詳細情報取得に便利です。"
+    fi
+
+    echo
+    echo "ウィンドウマネージャーのプロセスやWaylandコンポジターの検出:"
+    comp_procs="sway wayland Weston weston"
+    found_comps=""
+    for proc in $comp_procs; do
+      if ps -e | grep -w "$proc" >/dev/null 2>&1; then
+        found_comps="$found_comps $proc"
+      fi
+    done
+    if [ -n "$found_comps" ]; then
+      echo "検出されたWaylandコンポジター・ウィンドウマネージャー:$found_comps"
+    else
+      echo "Waylandコンポジター・ウィンドウマネージャーは検出できませんでした"
+    fi
+
   else
-    echo "wmctrlコマンドがありません。インストールすると詳細なウィンドウ情報が得られます。"
+    echo "不明なセッションタイプです。環境変数XDG_SESSION_TYPEを確認してください。"
   fi
 
   echo
-  echo "画面解像度・ディスプレイ情報 (xrandr --query):"
-  if command -v xrandr >/dev/null 2>&1; then
-    xrandr --query
-  else
-    echo "xrandrコマンドがありません。ディスプレイ情報が取得できません。"
-  fi
 
-  echo
-  echo "画面寸法 (xdpyinfo):"
-  if command -v xdpyinfo >/dev/null 2>&1; then
-    xdpyinfo | grep dimensions
+  echo "複数ディスプレイ・物理ディスプレイ情報取得（/sys/class/drm/）:"
+  if [ -d /sys/class/drm ]; then
+    ls -l /sys/class/drm/ | grep card
   else
-    echo "xdpyinfoコマンドがありません。画面寸法情報が取得できません。"
+    echo "/sys/class/drmディレクトリが存在しません。"
   fi
   echo
 }
