@@ -10,18 +10,14 @@ EOF
   exit 1
 }
 
-# シンプルな POSIX 準拠 JSON エスケープ関数
 json_escape() {
-  # \ \ " 改行・復帰コードをエスケープ
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/\"/\\"/g; s/\n/\\n/g; s/\r/\\r/g'
 }
 
-# HTML エスケープ関数
 html_escape() {
   printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g'
 }
 
-# オプション判定
 MODE=text
 if [ "$#" -gt 1 ]; then
   usage
@@ -33,7 +29,16 @@ elif [ "$#" -eq 1 ]; then
   esac
 fi
 
-# 情報収集関数（JSONは値の中身をエスケープのみ。カンマは呼び出し側で制御）
+if [ "$MODE" = html ]; then
+  echo "<html><head><meta charset=\"UTF-8\"><title>System Info</title></head><body><table border=1>"
+elif [ "$MODE" = json ]; then
+  echo "{"
+fi
+
+if [ "$MODE" = json ]; then
+  TMPFILE=$(mktemp) || exit 1
+fi
+
 collect_info() {
   SECTION="$1"
   CONTENT="$2"
@@ -43,10 +48,7 @@ collect_info() {
       printf '%s\n\n' "$CONTENT"
       ;;
     json)
-      # JSONの値はエスケープする
-      CONTENT_ESC=$(json_escape "$CONTENT")
-      # 戻り値は "key":"value"
-      printf '  "%s": "%s"' "$SECTION" "$CONTENT_ESC"
+      printf '  "%s": "%s"' "$SECTION" "$(json_escape "$CONTENT")"
       ;;
     html)
       printf '<tr><th>%s</th><td><pre>%s</pre></td></tr>\n' "$(html_escape "$SECTION")" "$(html_escape "$CONTENT")"
@@ -54,41 +56,28 @@ collect_info() {
   esac
 }
 
-# テキスト/HTML は単純に順に出力
-if [ "$MODE" = html ]; then
-  echo "<html><head><meta charset=\"UTF-8\"><title>System Info</title></head><body><table border=1>"
-fi
-
-if [ "$MODE" = json ]; then
-  echo "{"
-fi
-
-# JSON用に情報を配列に格納（POSIXシェルは配列ないので、一時ファイルに保存）
-if [ "$MODE" = json ]; then
-  TMPFILE=$(mktemp) || exit 1
-fi
-
 output_info() {
+  SECTION="$1"
+  CONTENT="$2"
   if [ "$MODE" = json ]; then
-    # JSON用は一時ファイルに "key":"value" 行を保存
-    SECTION="$1"
-    CONTENT="$2"
-    CONTENT_ESC=$(json_escape "$CONTENT")
-    printf '  "%s": "%s"\n' "$SECTION" "$CONTENT_ESC" >> "$TMPFILE"
+    printf '  "%s": "%s"\n' "$SECTION" "$(json_escape "$CONTENT")" >> "$TMPFILE"
   else
-    # text/htmlは即時出力
-    collect_info "$1" "$2"
+    collect_info "$SECTION" "$CONTENT"
   fi
 }
 
-# 収集したい情報を変数に入れてまとめて出す形に
 add_info() {
-  SECTION="$1"
-  CONTENT="$2"
-  output_info "$SECTION" "$CONTENT"
+  output_info "$1" "$2"
 }
 
-# --- ここから情報収集 ---
+check_cmd() {
+  CMD="$1"
+  if ! command -v "$CMD" >/dev/null 2>&1; then
+    MISSING_CMDS="$MISSING_CMDS $CMD"
+  fi
+}
+
+MISSING_CMDS=""
 
 add_info "OS情報" "$(uname -a)
 $(cat /etc/os-release 2>/dev/null || echo '（/etc/os-release 不明）')"
@@ -102,10 +91,20 @@ add_info "ディスク情報" "$(df -h --total 2>/dev/null || df -h || echo '不
 add_info "マウント状況" "$(mount | grep '^/dev' || echo '（情報取得できません）')"
 add_info "ネットワーク" "$(ip a 2>/dev/null || ifconfig || echo '不明')"
 add_info "ログインユーザーとログイン情報" "$(who || echo '不明')"
+
+check_cmd lsblk
 add_info "ストレージ構成" "$(lsblk 2>/dev/null || echo 'lsblk 不使用')"
+
+check_cmd lspci
 add_info "GPU/PCIデバイス" "$(lspci 2>/dev/null | grep -Ei 'vga|3d|display' || echo 'lspci 不使用')"
+
+check_cmd lscpu
 add_info "lscpu 情報" "$(lscpu 2>/dev/null || echo 'lscpu 不使用')"
+
+check_cmd lshw
 add_info "lshw 情報" "$(lshw -short 2>/dev/null || echo 'lshw 不使用')"
+
+check_cmd inxi
 add_info "inxi 情報" "$(inxi -Fxz 2>/dev/null || echo 'inxi 不使用')"
 
 # GUI 情報
@@ -115,60 +114,61 @@ XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-不明}
 WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-未設定}
 DISPLAY=${DISPLAY:-未設定}
 SSH_CONNECTION=${SSH_CONNECTION:-ローカル}"
-if [ -n "$SSH_CONNECTION" ]; then
-  GUI_INFO="$GUI_INFO\n※ SSH 経由のリモートセッションです"
-fi
-if [ -n "$DISPLAY" ] && [ -n "$WAYLAND_DISPLAY" ]; then
-  GUI_INFO="$GUI_INFO\n※ X11 と Wayland の両方が使用されています（混在）"
-elif [ -n "$WAYLAND_DISPLAY" ]; then
-  GUI_INFO="$GUI_INFO\nWayland セッションです"
-elif [ -n "$DISPLAY" ]; then
-  GUI_INFO="$GUI_INFO\nX11 セッションです"
-else
-  GUI_INFO="$GUI_INFO\nGUI セッション情報は取得できませんでした"
-fi
+[ -n "$SSH_CONNECTION" ] && GUI_INFO="$GUI_INFO\n※ SSH 経由のリモートセッションです"
+[ -n "$DISPLAY" ] && [ -n "$WAYLAND_DISPLAY" ] && GUI_INFO="$GUI_INFO\n※ X11 と Wayland の両方が使用されています（混在）"
+[ -n "$WAYLAND_DISPLAY" ] && [ -z "$DISPLAY" ] && GUI_INFO="$GUI_INFO\nWayland セッションです"
+[ -n "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && GUI_INFO="$GUI_INFO\nX11 セッションです"
+[ -z "$DISPLAY" ] && [ -z "$WAYLAND_DISPLAY" ] && GUI_INFO="$GUI_INFO\nGUI セッション情報は取得できませんでした"
 add_info "GUI 関連情報" "$GUI_INFO"
 
 # ウィンドウマネージャー検出
 WMS="gnome-shell kwin xfwm4 openbox i3 sway mutter kwin_x11"
 FOUND_WM=""
 for wm in $WMS; do
-  if ps -e | grep -w "$wm" >/dev/null 2>&1; then
-    FOUND_WM="$FOUND_WM $wm"
-  fi
+  ps -e | grep -w "$wm" >/dev/null 2>&1 && FOUND_WM="$FOUND_WM $wm"
 done
 [ -z "$FOUND_WM" ] && FOUND_WM="検出できませんでした"
 add_info "ウィンドウマネージャー・DE" "$FOUND_WM"
 
-# xrandr, xdpyinfo
+check_cmd xrandr
+check_cmd xdpyinfo
 XRANDR_OUT="$(xrandr --query 2>/dev/null || echo 'xrandr 不使用')"
 XDPYINFO_OUT="$(xdpyinfo 2>/dev/null | grep dimensions || echo 'xdpyinfo 不使用')"
 add_info "ディスプレイ情報" "$XRANDR_OUT
 $XDPYINFO_OUT"
 
-# --- ここまで情報収集 ---
+# 未インストールコマンドの案内
+if [ -n "$MISSING_CMDS" ]; then
+  INFO="以下のコマンドが見つかりませんでした:$MISSING_CMDS\n\n導入方法（root 権限が必要な場合があります）:\n\n"
 
-# JSONの場合は最後に一時ファイルから読み込んでカンマ区切りで出力
+  for CMD in $MISSING_CMDS; do
+    INFO="$INFO【$CMD】
+  Debian/Ubuntu系: sudo apt install $CMD
+  RedHat/Fedora系: sudo dnf install $CMD
+  Arch Linux系:    sudo pacman -S $CMD
+  macOS (brew):    brew install $CMD
+
+"
+  done
+
+  add_info "補足：未インストールコマンドと導入案内" "$INFO"
+fi
+
+# JSON出力の最終処理
 if [ "$MODE" = json ]; then
-  # 行数取得
   LINECNT=$(wc -l < "$TMPFILE" | tr -d ' ')
   COUNT=0
   while IFS= read -r line; do
     COUNT=$((COUNT + 1))
-    # 最終行以外はカンマ付ける
     if [ "$COUNT" -lt "$LINECNT" ]; then
       printf '%s,\n' "$line"
     else
       printf '%s\n' "$line"
     fi
   done < "$TMPFILE"
-
-  # EOFフィールドを追加（カンマつけていい）
   echo '  ,"EOF": "true"'
   echo "}"
   rm -f "$TMPFILE"
-fi
-
-if [ "$MODE" = html ]; then
+elif [ "$MODE" = html ]; then
   echo "</table></body></html>"
 fi
