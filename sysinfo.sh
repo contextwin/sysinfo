@@ -104,10 +104,6 @@ if [ "$OS" = "Linux" ]; then
   command -v lspci >/dev/null && lspci | grep -Ei 'vga|3d|display' || echo "lspciがありません"
   echo
 
-  echo "【ハードウェア情報（lshw）】"
-  command -v lshw >/dev/null && sudo lshw -short || echo "lshwがありません"
-  echo
-
   echo "【統合システム情報（inxi）】"
   command -v inxi >/dev/null && inxi -Fxz || echo "inxiがありません"
   echo
