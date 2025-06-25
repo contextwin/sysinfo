@@ -4,7 +4,7 @@ git clone https://github.com/contextwin/sysinfo
 
 2025/06/25 更にGUIやディスプレイに関する情報を詳細に取得する機能を追加しました。
 2025/06/25 更にLinux,FreeBSD,macOS(Darwin),で動作するように改良しました(Ubuntuでしか動作確認できてませんが,,,,,,)。
-2025/06/25 更にオプションでhtml形式,json形式で出力可能になりました
+2025/06/25 更にオプション指定でhtml形式,json形式で出力可能になりました
 
 実行権を付与して実行して下さい。
 chomod +x sysinfo.sh
