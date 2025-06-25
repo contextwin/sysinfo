@@ -64,35 +64,241 @@ check_cmd() {
   command -v "$1" >/dev/null 2>&1 || MISSING_CMDS="$MISSING_CMDS $1"
 }
 
-# 共通情報（simple/detail 両対応）
-collect_info "OS情報" "$(uname -a)
-$(cat /etc/os-release 2>/dev/null)"
-collect_info "カーネル" "$(uname -r)"
-collect_info "ホスト名と稼働時間" "$(hostname)
-$(uptime)"
-collect_info "CPU情報" "$(grep -m 1 'model name' /proc/cpuinfo)
-$(nproc --all 2>/dev/null || getconf _NPROCESSORS_ONLN)"
-collect_info "メモリ情報" "$(free -h 2>/dev/null || vm_stat 2>/dev/null)"
-collect_info "ディスク情報" "$(df -h --total 2>/dev/null || df -h)"
+# OS種別取得
+OSNAME="$(uname)"
 
-# simple の場合ここで終了
+# 共通情報（simple/detail 両対応）
+case "$OSNAME" in
+  Linux)
+    OS_INFO="$(uname -a)
+$(cat /etc/os-release 2>/dev/null)"
+    ;;
+  FreeBSD)
+    OS_INFO="$(uname -a)
+$(cat /etc/os-release 2>/dev/null || echo 'FreeBSD (os-release not found)')"
+    ;;
+  Darwin)
+    OS_INFO="$(uname -a)
+sw_vers"
+    ;;
+  *)
+    OS_INFO="$(uname -a)"
+    ;;
+esac
+
+collect_info "OS情報" "$OS_INFO"
+
+case "$OSNAME" in
+  Linux|FreeBSD|Darwin)
+    KERNEL_VER="$(uname -r)"
+    ;;
+  *)
+    KERNEL_VER="$(uname -r)"
+    ;;
+esac
+
+collect_info "カーネル" "$KERNEL_VER"
+collect_info "ホスト名と稼働時間" "$(hostname)
+$(uptime 2>/dev/null || echo 'uptime 不使用')"
+
+# CPU情報
+case "$OSNAME" in
+  Linux)
+    CPU_INFO="$(grep -m 1 'model name' /proc/cpuinfo 2>/dev/null)
+$(nproc --all 2>/dev/null || getconf _NPROCESSORS_ONLN)"
+    ;;
+  FreeBSD)
+    CPU_INFO="$(sysctl -n hw.model 2>/dev/null)
+$(sysctl -n hw.ncpu 2>/dev/null)"
+    ;;
+  Darwin)
+    CPU_INFO="$(sysctl -n machdep.cpu.brand_string 2>/dev/null)
+$(sysctl -n hw.ncpu 2>/dev/null)"
+    ;;
+  *)
+    CPU_INFO="CPU情報 取得不可"
+    ;;
+esac
+
+collect_info "CPU情報" "$CPU_INFO"
+
+# メモリ情報
+case "$OSNAME" in
+  Linux)
+    MEM_INFO="$(free -h 2>/dev/null)"
+    ;;
+  FreeBSD)
+    MEM_INFO="$(sysctl hw.physmem hw.usermem 2>/dev/null | awk '{print $1 ": " $2}')"
+    ;;
+  Darwin)
+    MEM_INFO="$(vm_stat 2>/dev/null)"
+    ;;
+  *)
+    MEM_INFO="メモリ情報 取得不可"
+    ;;
+esac
+collect_info "メモリ情報" "$MEM_INFO"
+
+# ディスク情報
+case "$OSNAME" in
+  Linux)
+    DISK_INFO="$(df -h --total 2>/dev/null || df -h)"
+    ;;
+  FreeBSD|Darwin)
+    DISK_INFO="$(df -h)"
+    ;;
+  *)
+    DISK_INFO="ディスク情報 取得不可"
+    ;;
+esac
+collect_info "ディスク情報" "$DISK_INFO"
+
 if [ "$LEVEL" = simple ]; then
-  collect_info "ネットワーク" "$(ip a 2>/dev/null || ifconfig)"
-  collect_info "ログインユーザー" "$(who)"
+  # 簡易モード
+  case "$OSNAME" in
+    Linux)
+      NET_INFO="$(ip a 2>/dev/null || ifconfig)"
+      ;;
+    FreeBSD|Darwin)
+      NET_INFO="$(ifconfig)"
+      ;;
+    *)
+      NET_INFO="ネットワーク情報 取得不可"
+      ;;
+  esac
+  collect_info "ネットワーク" "$NET_INFO"
+
+  LOGIN_INFO="$(who)"
+  collect_info "ログインユーザー" "$LOGIN_INFO"
+
 else
-  collect_info "マウント状況" "$(mount | grep '^/dev' || echo '（情報取得できません）')"
-  collect_info "ネットワーク" "$(ip a 2>/dev/null || ifconfig)"
-  collect_info "ログインユーザーとログイン情報" "$(who)"
-  collect_info "ストレージ構成" "$(lsblk 2>/dev/null || echo 'lsblk 不使用')"
-  collect_info "GPU/PCIデバイス" "$(lspci 2>/dev/null | grep -Ei 'vga|3d|display' || echo 'lspci 不使用')"
-  collect_info "lscpu 情報" "$(lscpu 2>/dev/null || echo 'lscpu 不使用')"
-  collect_info "lshw 情報" "$(lshw -short 2>/dev/null || echo 'lshw 不使用')"
-  collect_info "inxi 情報" "$(inxi -Fxz 2>/dev/null || echo 'inxi 不使用')"
+  # 詳細モード
+  case "$OSNAME" in
+    Linux)
+      MOUNT_INFO="$(mount | grep '^/dev' || echo '（情報取得できません）')"
+      ;;
+    FreeBSD)
+      MOUNT_INFO="$(mount | grep -E '^/' || echo '（情報取得できません）')"
+      ;;
+    Darwin)
+      MOUNT_INFO="$(mount)"
+      ;;
+    *)
+      MOUNT_INFO="マウント状況 取得不可"
+      ;;
+  esac
+  collect_info "マウント状況" "$MOUNT_INFO"
+
+  case "$OSNAME" in
+    Linux)
+      NET_INFO="$(ip a 2>/dev/null || ifconfig)"
+      ;;
+    FreeBSD|Darwin)
+      NET_INFO="$(ifconfig)"
+      ;;
+    *)
+      NET_INFO="ネットワーク情報 取得不可"
+      ;;
+  esac
+  collect_info "ネットワーク" "$NET_INFO"
+
+  LOGIN_INFO="$(who)"
+  collect_info "ログインユーザーとログイン情報" "$LOGIN_INFO"
+
+  case "$OSNAME" in
+    Linux)
+      STORAGE_INFO="$(lsblk 2>/dev/null || echo 'lsblk 不使用')"
+      ;;
+    FreeBSD)
+      STORAGE_INFO="$(geom disk list 2>/dev/null || echo 'geom 不使用')"
+      ;;
+    Darwin)
+      STORAGE_INFO="$(diskutil list 2>/dev/null || echo 'diskutil 不使用')"
+      ;;
+    *)
+      STORAGE_INFO="ストレージ構成 取得不可"
+      ;;
+  esac
+  collect_info "ストレージ構成" "$STORAGE_INFO"
+
+  case "$OSNAME" in
+    Linux)
+      GPU_INFO="$(lspci 2>/dev/null | grep -Ei 'vga|3d|display' || echo 'lspci 不使用')"
+      ;;
+    FreeBSD)
+      GPU_INFO="$(pciconf -lv 2>/dev/null | grep -Ei 'vga|3d|display' || echo 'pciconf 不使用')"
+      ;;
+    Darwin)
+      GPU_INFO="$(system_profiler SPDisplaysDataType 2>/dev/null || echo 'system_profiler 不使用')"
+      ;;
+    *)
+      GPU_INFO="GPU情報 取得不可"
+      ;;
+  esac
+  collect_info "GPU/PCIデバイス" "$GPU_INFO"
+
+  case "$OSNAME" in
+    Linux)
+      LSCU_INFO="$(lscpu 2>/dev/null || echo 'lscpu 不使用')"
+      ;;
+    FreeBSD)
+      LSCU_INFO="lscpu 不使用（FreeBSDでは sysctl 等で代替可）"
+      ;;
+    Darwin)
+      LSCU_INFO="lscpu 不使用（macOSでは sysctl 等で代替可）"
+      ;;
+    *)
+      LSCU_INFO="lscpu 情報 取得不可"
+      ;;
+  esac
+  collect_info "lscpu 情報" "$LSCU_INFO"
+
+  case "$OSNAME" in
+    Linux)
+      LSHW_INFO="$(lshw -short 2>/dev/null || echo 'lshw 不使用')"
+      ;;
+    FreeBSD|Darwin)
+      LSHW_INFO="lshw 不使用"
+      ;;
+    *)
+      LSHW_INFO="lshw 情報 取得不可"
+      ;;
+  esac
+  collect_info "lshw 情報" "$LSHW_INFO"
+
+  case "$OSNAME" in
+    Linux)
+      INXI_INFO="$(inxi -Fxz 2>/dev/null || echo 'inxi 不使用')"
+      ;;
+    FreeBSD|Darwin)
+      INXI_INFO="inxi 不使用"
+      ;;
+    *)
+      INXI_INFO="inxi 情報 取得不可"
+      ;;
+  esac
+  collect_info "inxi 情報" "$INXI_INFO"
 
   # smartctl 情報（sudo 不要な範囲）
   if command -v smartctl >/dev/null 2>&1; then
     SMART_INFO=""
-    for dev in /dev/sd? /dev/nvme?n1; do
+    DEVICES=""
+    case "$OSNAME" in
+      Linux)
+        DEVICES="/dev/sd? /dev/nvme?n1"
+        ;;
+      FreeBSD)
+        DEVICES="/dev/ada? /dev/nvd? /dev/da?"
+        ;;
+      Darwin)
+        DEVICES="/dev/disk?"
+        ;;
+      *)
+        DEVICES=""
+        ;;
+    esac
+
+    for dev in $DEVICES; do
       [ -e "$dev" ] || continue
       INFO=$(smartctl -H -i -A "$dev" 2>/dev/null | grep -E 'Model|Serial|SMART overall|Temperature|Reallocated' || echo '取得不可')
       SMART_INFO="$SMART_INFO\n=== $dev ===\n$INFO\n"
@@ -139,7 +345,7 @@ fi
 if [ -n "$MISSING_CMDS" ]; then
 {
   echo
-  echo [!] この補足はstderrに出力されています
+  echo "[!] この補足はstderrに出力されています"
   echo
   echo "【補足】一部の情報は以下のコマンドが未インストールのため取得できませんでした："
   for cmd in $(echo "$MISSING_CMDS" | tr ' ' '\n' | sort -u); do
@@ -150,9 +356,10 @@ if [ -n "$MISSING_CMDS" ]; then
   echo "■ Debian/Ubuntu 系: sudo apt install パッケージ名"
   echo "■ RedHat/Fedora 系: sudo dnf install パッケージ名"
   echo "■ Arch Linux 系:     sudo pacman -S パッケージ名"
+  echo "■ FreeBSD:           sudo pkg install パッケージ名"
   echo "■ macOS (Homebrew):  brew install パッケージ名"
   echo
-  echo [!] 補足情報の出力はここまでです
+  echo "[!] 補足情報の出力はここまでです"
 
 } >&2
 fi
