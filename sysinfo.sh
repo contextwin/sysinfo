@@ -28,6 +28,19 @@ case "$1" in
   *) print_usage ;;
 esac
 
+# 必要コマンドのチェック
+MISSING_CMDS=""
+check_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    MISSING_CMDS="$MISSING_CMDS $1"
+    return 1
+  }
+}
+
+# JSON バッファ
+JSON_BUFFER=""
+
+# 情報収集関数
 collect_info() {
   SECTION="$1"
   CONTENT="$2"
@@ -38,7 +51,7 @@ collect_info() {
       ;;
     json)
       CONTENT_ESC=$(json_escape "$CONTENT")
-      printf '  "%s": "%s",\n' "$SECTION" "$CONTENT_ESC"
+      JSON_BUFFER="$JSON_BUFFER\"$SECTION\": \"$CONTENT_ESC\",\n"
       ;;
     html)
       printf '<tr><th>%s</th><td><pre>%s</pre></td></tr>\n' "$(html_escape "$SECTION")" "$(html_escape "$CONTENT")"
@@ -50,13 +63,7 @@ collect_info() {
 [ "$MODE" = html ] && echo "<html><head><meta charset=\"UTF-8\"><title>System Info</title></head><body><table border=1>"
 [ "$MODE" = json ] && echo "{"
 
-# 必要コマンドのチェック
-MISSING_CMDS=""
-check_cmd() {
-  command -v "$1" >/dev/null 2>&1 || MISSING_CMDS="$MISSING_CMDS $1"
-}
-
-# 情報収集
+# 各情報の収集
 collect_info "OS情報" "$(uname -a)
 $(cat /etc/os-release 2>/dev/null)"
 collect_info "カーネル" "$(uname -r)"
@@ -69,18 +76,23 @@ collect_info "ディスク情報" "$(df -h --total 2>/dev/null || df -h)"
 collect_info "マウント状況" "$(mount | grep '^/dev' || echo '（情報取得できません）')"
 collect_info "ネットワーク" "$(ip a 2>/dev/null || ifconfig)"
 collect_info "ログインユーザーとログイン情報" "$(who)"
+check_cmd lsblk
 collect_info "ストレージ構成" "$(lsblk 2>/dev/null || echo 'lsblk 不使用')"
+check_cmd lspci
 collect_info "GPU/PCIデバイス" "$(lspci 2>/dev/null | grep -Ei 'vga|3d|display' || echo 'lspci 不使用')"
+check_cmd lscpu
 collect_info "lscpu 情報" "$(lscpu 2>/dev/null || echo 'lscpu 不使用')"
+check_cmd lshw
 collect_info "lshw 情報" "$(lshw -short 2>/dev/null || echo 'lshw 不使用')"
+check_cmd inxi
 collect_info "inxi 情報" "$(inxi -Fxz 2>/dev/null || echo 'inxi 不使用')"
 
-# smartctl (S.M.A.R.T.) 情報
-if command -v smartctl >/dev/null 2>&1; then
+# smartctl 情報（sudo は使わず直接実行）
+if check_cmd smartctl; then
   SMART_INFO=""
   for dev in /dev/sd? /dev/nvme?n1; do
     [ -e "$dev" ] || continue
-    INFO="$(sudo smartctl -H -i -A "$dev" 2>/dev/null || echo '取得不可')"
+    INFO="$(smartctl -H -i -A "$dev" 2>/dev/null || echo '取得不可（権限不足の可能性あり）')"
     SMART_INFO="$SMART_INFO\n=== $dev ===\n$INFO\n"
   done
   collect_info "S.M.A.R.T.情報（smartctl）" "$SMART_INFO"
@@ -112,20 +124,26 @@ done
 collect_info "ウィンドウマネージャー・DE" "${FOUND_WM:-検出できませんでした}"
 
 # ディスプレイ情報
+check_cmd xrandr
+check_cmd xdpyinfo
 XRANDR_OUT="$(xrandr --query 2>/dev/null || echo 'xrandr 不使用')"
 XDPYINFO_OUT="$(xdpyinfo 2>/dev/null | grep dimensions || echo 'xdpyinfo 不使用')"
 collect_info "ディスプレイ情報" "$XRANDR_OUT\n$XDPYINFO_OUT"
 
-# JSON終了処理
-[ "$MODE" = json ] && echo '  "EOF": "true"' && echo "}"
+# JSON 出力を終了
+if [ "$MODE" = json ]; then
+  echo "$JSON_BUFFER" | sed '$ s/,$//'
+  echo "}"
+fi
+
 [ "$MODE" = html ] && echo "</table></body></html>"
 
-
-# 未インストールコマンドの案内
+# 未インストールコマンドの案内（stderr 出力）
 if [ -n "$MISSING_CMDS" ]; then
 {
   echo
-  echo !! この補足はstderrに出力されています
+  echo "[!] この補足は stderr に出力されています"
+  echo
   echo "【補足】一部の情報は以下のコマンドが未インストールのため取得できませんでした："
   for cmd in $(echo "$MISSING_CMDS" | tr ' ' '\n' | sort -u); do
     echo " - $cmd"
@@ -136,5 +154,7 @@ if [ -n "$MISSING_CMDS" ]; then
   echo "■ RedHat/Fedora 系: sudo dnf install パッケージ名"
   echo "■ Arch Linux 系:     sudo pacman -S パッケージ名"
   echo "■ macOS (Homebrew):  brew install パッケージ名"
+  echo
+  echo "[!] 補足情報の出力はここまでです"
 } >&2
 fi
